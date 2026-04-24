@@ -362,6 +362,80 @@ Rationale: grammar is a small-delta, high-frequency task — local wins on
 latency and privacy. Translation is high-delta, lower-frequency — hosted
 quality is worth the API cost on memory-constrained hardware.
 
+## Linux Migration Path
+
+Existing Linux rofi prototype is preserved through the v0.1 cutover:
+
+1. **Before refactor:** current script is copied to
+   `frontends/linux/popup-legacy.sh` and tagged `pre-v0.1-linux-prototype`
+   in git. If anything regresses, the legacy script is one command away.
+2. **During refactor:** new `frontends/linux/popup.sh` is written alongside,
+   calling `python -m offline_text run`. The old hotkey can still point at
+   the legacy script while the new one is tested.
+3. **Cutover:** once the new popup matches the old flow against the eval
+   set (same inputs produce same or better outputs), flip the hotkey, keep
+   legacy around for ~1 week, then delete.
+4. **No change to:** Ollama daemon, models in VRAM, rofi look/feel, hotkey
+   binding in the WM, clipboard tools (xclip on X11, wl-copy on Wayland —
+   auto-detected), or config path (`~/.config/offline-text/` via
+   `platformdirs`).
+
+## Cross-Provider Evaluation (v0.1 scope)
+
+Quality is testable across all configured providers using the case set in
+`docs/evaluation.md`. Pulled into v0.1 from the v0.2 TODO list because
+"does the hosted model actually do better than local, and by how much?" is
+the question that drives the per-machine config decisions.
+
+**Command:**
+```
+python -m offline_text eval [--providers ollama,openai,anthropic] \
+                            [--actions fix-grammar,translate-en-to-pt,...] \
+                            [--output eval-results.md]
+```
+
+**What it runs:** every case in `docs/evaluation.md` × every listed action ×
+every listed provider. Each case has `input`, `task`, `expected`, `notes`,
+`risk` per the existing doc.
+
+**What it reports:**
+
+| Case | Provider | Output | Safety | Edit ratio | Pass? | Notes |
+|---|---|---|---|---|---|---|
+| "run grammar on correct text" | ollama/llama3.1:8b | (same) | ok | 0.00 | ✓ | unchanged as expected |
+| "run grammar on correct text" | gpt-4o-mini | (same) | ok | 0.00 | ✓ | |
+| "run grammar on correct text" | claude-haiku-4-5 | (same) | ok | 0.00 | ✓ | |
+| "EN→PT with embedded phone number" | ollama/llama3.1:8b | "...555-1234" | ok | 0.14 | ✓ | number preserved |
+| "EN→PT with embedded phone number" | gpt-4o-mini | "...cinco-um-2-3-4" | **reject** | 0.31 | ✓ | safety caught hallucination |
+| ... | | | | | | |
+
+**Pass criteria** (from `docs/evaluation.md`): meaning preserved, grammar
+improved (or unchanged when correct), tone preserved, minimal rewrite, no
+entity drift. Programmatic checks catch the mechanical ones (unchanged-when-
+correct, entity preservation, edit ratio). The qualitative ones (meaning,
+tone) get flagged for manual review with a diff pair.
+
+**Safety-feature coverage** is part of the eval set — each provider is run
+against cases where the model is known to hallucinate numbers, URLs, or
+emails. A "pass" means the safety layer rejected the bad output, not that
+the model behaved well. This tests the feature we built, not just the model.
+
+**New-feature coverage:** every feature added during this design iteration
+(LiteLLM provider routing, per-action provider overrides, atomic clipboard,
+error-kind schema, doctor healthcheck) has a corresponding eval or integration
+test. Specifically:
+- Per-action provider override → case asserts that `translate-en-to-pt` with
+  `provider=anthropic` actually hits Anthropic (LiteLLM call log inspected).
+- Error-kind schema → case simulates auth failure, network timeout, rate
+  limit; asserts core output matches the discriminated schema.
+- Doctor healthcheck → case runs with Ollama stopped; asserts exit code 69
+  and "start Ollama" message.
+
+**Cost note:** running the full eval against hosted providers costs tokens.
+Typical: ~30 cases × ~200 tokens each × 2 hosted providers ≈ 12k tokens
+per run. At Haiku/gpt-4o-mini prices, about $0.05 per full run. Run it
+manually, not on every commit.
+
 ## Distribution Plan
 
 v0.1 is a git-clone-and-install project:
@@ -397,10 +471,17 @@ Package-manager distribution (Homebrew tap, Nix flake) is v0.2.
 7. Implement `diff.py` (unified + word-level)
 8. Wire `__main__.py` CLI (`run`, `list-actions`, `list-providers`, `doctor`,
    `config set-key`)
-9. Build the evaluation harness from `docs/evaluation.md`
-10. Refactor existing Linux rofi popup to call the Python core
-11. Write macOS `choose` popup from scratch
-12. Run evaluation set against local + hosted providers; document quality diff
+9. Build the cross-provider evaluation harness (`python -m offline_text eval`)
+   that runs every case in `docs/evaluation.md` × every configured action ×
+   every provider, with the reporting table + pass criteria specified above
+10. Snapshot existing Linux rofi script as `frontends/linux/popup-legacy.sh`
+    before any refactor
+11. Refactor Linux rofi popup to call the Python core; verify parity against
+    the eval set before flipping the hotkey
+12. Write macOS `choose` popup with terminal-diff-popup flow from scratch
+13. Run the full eval against Ollama + OpenAI + Anthropic; commit results as
+    `docs/eval-baseline.md`; use the numbers to tune per-action provider
+    defaults on each machine
 
 ## What I noticed about how you think
 

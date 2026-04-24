@@ -50,29 +50,27 @@ Python core returns the fixed text either way.
 
 ---
 
-## [v0.2] Full evaluation harness across providers
+## [v0.2] LLM-as-judge for qualitative eval criteria
 
-**What:** A `python -m offline_text eval` command that runs the full case set
-in `docs/evaluation.md` against every configured provider, reports per-case
-pass/fail based on the criteria in that doc, and prints a comparison table.
+**What:** Extend the v0.1 eval harness with an LLM-as-judge pass for the
+qualitative criteria (meaning preserved, tone preserved) that can't be
+checked programmatically.
 
-**Why:** Real comparison data on which local + hosted models are worth using
-for grammar vs. translation. Today it's eyeball judgment; a harness turns it
-into a number.
+**Why:** v0.1 eval catches mechanical pass/fail (entity drift, edit ratio,
+safety rejects, unchanged-when-correct). It flags qualitative cases for
+manual review. An LLM judge would auto-score those.
 
-**Pros:** Quantified quality. Makes provider choices evidence-based.
-Regression-testable over time as new models ship.
+**Pros:** Scales eval to larger case sets without manual review. Makes
+"meaning preservation" a number.
 
-**Cons:** Requires encoding the eval criteria programmatically (meaning drift,
-excessive rewrite, broken accents, changed entities). Some criteria are
-qualitative and need an LLM-as-judge pass (which costs tokens and introduces
-judge bias).
+**Cons:** Judge bias (GPT judges may favor GPT outputs), token cost on every
+run, judge disagreements with humans need calibration.
 
-**Context:** Next Steps step 10 in `docs/design-v0.1.md` is "run eval set
-against configured providers" — a one-off check. This TODO is the durable
-harness version that runs on demand.
+**Context:** The v0.1 harness (Next Steps step 9) already runs cases across
+providers with programmatic checks. This is the qualitative-criteria layer
+on top.
 
-**Depends on:** v0.1 Ollama + hosted providers working, `safety.py` stable.
+**Depends on:** v0.1 eval harness shipped and in regular use.
 
 ---
 
