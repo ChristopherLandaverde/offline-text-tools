@@ -74,21 +74,40 @@ This project uses a deliberate two-model workflow. Respect the split.
   clarification.
 - Invoked via the `/codex` skill when the spec is ready.
 
-**Handoff format (Claude → Codex):**
-1. Claude writes the module stub with docstrings, type signatures, and any
-   invariants that must hold (as comments or assertions).
-2. Claude writes the full pytest suite for that module — tests fail against
-   the stub because the bodies are `raise NotImplementedError`.
-3. Claude writes a one-paragraph implementation brief: "Here's the spec,
-   here are the tests, make them pass. Don't add anything not asked for."
-4. Codex implements; tests run; if green, Claude reviews the diff for spec
-   drift; if clean, it lands.
+**Canonical orchestrator: `scripts/build-loop.sh`.**
 
-**Handoff format (Codex → Claude):**
-- Codex returns the implementation diff. Claude checks: (1) all tests pass,
-  (2) no out-of-scope changes, (3) no new dependencies not in the spec,
-  (4) the implementation didn't invent behavior the spec didn't describe.
-- If anything drifts, Claude rejects and either re-specs or rewrites.
+The Claude → Codex → review loop runs through `scripts/build-loop.sh`, which
+predates this CLAUDE.md and has been road-tested. Use it, don't reinvent it.
+
+```
+./scripts/build-loop.sh              # First run: Codex implements from CODEX_PROMPT.md
+./scripts/build-loop.sh review       # After Claude review: Codex applies REVIEW_FEEDBACK.md
+./scripts/build-loop.sh "fix X"      # Ad-hoc: Codex gets targeted instructions
+```
+
+It tracks iteration count, logs every Codex run to `.codex-output-N.log`, and
+shows the diff after each iteration.
+
+**Handoff flow:**
+1. Claude writes the spec to `CODEX_PROMPT.md` using the template at
+   `docs/workflow/codex-handoff-template.md`. The spec includes: module stub
+   with type signatures + docstrings, full pytest suite that fails against
+   the stub, a one-paragraph "make the tests pass, add nothing more" brief.
+2. Run `./scripts/build-loop.sh`. Codex implements; Claude reads the diff.
+3. If the diff drifts from spec: Claude writes `REVIEW_FEEDBACK.md` with
+   specific asks, runs `./scripts/build-loop.sh review`. Codex applies
+   feedback. Loop until green + no drift.
+4. Merge via `/ship`. Delete `.iteration` + `.codex-output-*.log` as part
+   of cleanup.
+
+**What Claude checks before accepting a Codex diff:**
+1. All tests pass (no changes to test files to make them pass).
+2. No out-of-scope changes (files outside the spec scope are untouched).
+3. No new dependencies not in the spec.
+4. No invented behavior the spec didn't describe.
+
+If anything drifts, write `REVIEW_FEEDBACK.md` and re-run. Never silently
+accept "close enough" — the spec is the contract.
 
 **What stays with Claude regardless of workflow:**
 - `safety.py` — invariant checks on URLs, emails, numbers. Silent failures
