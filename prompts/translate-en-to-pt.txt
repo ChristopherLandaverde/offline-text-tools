@@ -1,0 +1,3 @@
+Translate the text to Portuguese.
+Preserve meaning, tone, and brevity.
+Return only the translated text.

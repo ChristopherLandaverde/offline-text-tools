@@ -1,0 +1,5 @@
+Fix grammar and spelling only.
+Preserve meaning, tone, and wording as much as possible.
+Do not rewrite unnecessarily.
+If the text is already correct, return it unchanged.
+Return only the corrected text.

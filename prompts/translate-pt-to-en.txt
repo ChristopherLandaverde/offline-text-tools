@@ -1,0 +1,3 @@
+Translate the text to English.
+Preserve meaning, tone, and brevity.
+Return only the translated text.
